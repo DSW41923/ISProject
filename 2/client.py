@@ -1,4 +1,5 @@
 import socket
+import re
 from Crypto.PublicKey import RSA
 from Crypto import Random
 from Crypto.Hash import MD5
@@ -9,8 +10,6 @@ port = 5566
 
 print("Start setting socket...", end='', flush=True)
 mysock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# mysock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-me = str(mysock.getsockname()[1])
 print("Done", flush=True)
 
 print("Connect to server...", end='', flush=True)
@@ -30,6 +29,8 @@ data = mysock.recv(size)
 server_public_key = RSA.importKey(data)
 print("Done", flush=True)
 
+me = str(mysock.getsockname()[1])
+
 while True:
     # 3
     print("Waiting for notification from server...", end='', flush=True)
@@ -40,7 +41,11 @@ while True:
     h = MD5.new(data)
     data = h.hexdigest()
     data = server_public_key.encrypt(bytes(data, 'UTF-8'), 32)[0]
-    header = bytes('0'*1024, 'UTF-8')
+    h = MD5.new(data)
+    header = str(key.sign(bytes(h.hexdigest(), 'UTF-8'), 71)[0])
+    if len(header) < 1024:
+        header += chr(00)*(1024 - len(header))
+    header = bytes(header, 'UTF-8')
     h = MD5.new(header + data)
     trail = bytes(h.hexdigest(), 'UTF-8')
     data = header + data + trail
@@ -51,7 +56,7 @@ while True:
     data = mysock.recv(size)
     try:
         check = data.decode('UTF-8')
-        if check in ["Integrity check fail!", "Authetication fail!"]:
+        if check in ["Integrity check fail!", "Authetication fail!", "Signature check fail!"]:
             print("Fail", flush=True)
             continue
         else:
@@ -62,6 +67,13 @@ while True:
         pass
     # 6
     print("Receiving new patch from server", flush=True)
+    h = MD5.new(data[1024:-32])
+    if server_public_key.verify(bytes(h.hexdigest(), 'UTF-8'), (int(data.split(bytes(chr(00), 'UTF-8'))[0]), None)):
+        print("Patch signature check pass!")
+        pass
+    else:
+        print("Patch signature check fail!")
+        continue
     h = MD5.new(data[:-32])
     if(bytes(h.hexdigest(), 'UTF-8') != data[-32:]):
         print("Patch integrity check fail!")
@@ -70,7 +82,7 @@ while True:
         print("Patch integrity check pass!")
         pass
     patch = key.decrypt(data[1024:-32])
-    patch_file = open("patch{}.dat" % me, "wb")
+    patch_file = open("patch{}.dat".format(me), "wb")
     patch_file.write(patch)
     patch_file.close()
 mysock.close()

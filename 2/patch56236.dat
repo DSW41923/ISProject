@@ -1,0 +1,2 @@
+127.0.0.1:8000
+ data received from the client:b'hi, This is connection from python network client'
